@@ -1,0 +1,81 @@
+# FastNet Smart Card Store - Docker Compose
+# Full stack deployment with MySQL and Redis
+
+version: "3.8"
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: fastnet-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-fastnet_root_2024}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fastnet}
+      MYSQL_USER: ${MYSQL_USER:-fastnet}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fastnet_pass_2024}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - fastnet-network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: fastnet-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fastnet-network
+
+  # Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastnet-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://${MYSQL_USER:-fastnet}:${MYSQL_PASSWORD:-fastnet_pass_2024}@mysql:3306/${MYSQL_DATABASE:-fastnet}
+      REDIS_URL: redis://redis:6379
+      APP_SECRET: ${APP_SECRET:-fastnet_secret_key_change_me}
+      VITE_APP_ID: ${VITE_APP_ID:-}
+      VITE_KIMI_AUTH_URL: ${VITE_KIMI_AUTH_URL:-}
+      KIMI_AUTH_URL: ${KIMI_AUTH_URL:-}
+      OWNER_UNION_ID: ${OWNER_UNION_ID:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fastnet-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  fastnet-network:
+    driver: bridge
